@@ -350,12 +350,15 @@ class MarketAnalyzer:
                 'max_output_tokens': 2048,
             }
             
-            # 根据 analyzer 使用的 API 类型调用
-            if self.analyzer._use_openai:
-                # 使用 OpenAI 兼容 API
+            # 复用个股分析里的统一重试与限流处理逻辑，
+            # 避免大盘复盘单独调用时出现 429 却没有重试。
+            if hasattr(self.analyzer, '_call_api_with_retry'):
+                review = self.analyzer._call_api_with_retry(prompt, generation_config)
+            elif getattr(self.analyzer, '_use_openai', False):
+                # 兼容非 GeminiAnalyzer 的 OpenAI 风格客户端
                 review = self.analyzer._call_openai_api(prompt, generation_config)
             else:
-                # 使用 Gemini API
+                # 回退到直接调用底层模型（不推荐，仅作为兜底）
                 response = self.analyzer._model.generate_content(
                     prompt,
                     generation_config=generation_config,

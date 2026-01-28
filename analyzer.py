@@ -15,6 +15,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
+import threading
 
 from tenacity import (
     retry,
@@ -204,6 +205,10 @@ class GeminiAnalyzer:
     # ========================================
     # 系统提示词 - 决策仪表盘 v2.0
     # ========================================
+    
+    # 为了避免在多线程环境下并发调用同一个大模型导致 429 限流，
+    # 使用类级别锁串行化所有 LLM 调用（不同实例之间也互斥）。
+    _llm_lock = threading.Lock()
     # 输出格式升级：从简单信号升级为决策仪表盘
     # 核心模块：核心结论 + 数据透视 + 舆情情报 + 作战计划
     # ========================================
@@ -774,9 +779,10 @@ class GeminiAnalyzer:
             
             logger.info(f"[LLM调用] 开始调用 Gemini API (temperature={generation_config['temperature']}, max_tokens={generation_config['max_output_tokens']})...")
             
-            # 使用带重试的 API 调用
+            # 使用带重试的 API 调用，并通过类级别锁串行化请求，降低 429 限流风险
             start_time = time.time()
-            response_text = self._call_api_with_retry(prompt, generation_config)
+            with self._llm_lock:
+                response_text = self._call_api_with_retry(prompt, generation_config)
             elapsed = time.time() - start_time
             
             # 记录响应信息
