@@ -37,11 +37,34 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
       
+      - name: 检查是否为交易日
+        id: trading_day
+        run: |
+          python - << 'EOF'
+          import datetime
+          import os
+          from chinese_calendar import is_holiday
+
+          tz = datetime.timezone(datetime.timedelta(hours=8))
+          today = datetime.datetime.now(tz).date()
+          is_weekend = today.weekday() >= 5  # 5=周六, 6=周日
+          if is_weekend or is_holiday(today):
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('is_trading_day=false\n')
+              print('今日为节假日/休市日，跳过分析与推送')
+          else:
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('is_trading_day=true\n')
+              print('今日为交易日，继续执行分析')
+          EOF
+      
       - name: 创建必要目录
+        if: steps.trading_day.outputs.is_trading_day == 'true'
         run: |
           mkdir -p data logs reports
       
       - name: 执行股票分析
+        if: steps.trading_day.outputs.is_trading_day == 'true'
         env:
           # Gemini AI
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -111,7 +134,7 @@ jobs:
       
       - name: 上传分析报告
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.trading_day.outputs.is_trading_day == 'true'
         with:
           name: analysis-reports-${{ github.run_number }}
           path: |
@@ -120,7 +143,7 @@ jobs:
           retention-days: 30
       
       - name: 显示运行结果
-        if: always()
+        if: always() && steps.trading_day.outputs.is_trading_day == 'true'
         run: |
           echo "=========================================="
           echo "分析完成"
