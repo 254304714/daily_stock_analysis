@@ -39,23 +39,31 @@ jobs:
       
       - name: 检查是否为交易日
         id: trading_day
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python - << 'EOF'
           import datetime
           import os
           from chinese_calendar import is_holiday
 
-          tz = datetime.timezone(datetime.timedelta(hours=8))
-          today = datetime.datetime.now(tz).date()
-          is_weekend = today.weekday() >= 5  # 5=周六, 6=周日
-          if is_weekend or is_holiday(today):
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write('is_trading_day=false\n')
-              print('今日为节假日/休市日，跳过分析与推送')
-          else:
+          # 仅定时任务触发时判断交易日；手动触发直接执行
+          if os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
               with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
                   f.write('is_trading_day=true\n')
-              print('今日为交易日，继续执行分析')
+              print('手动触发，直接执行分析并推送')
+          else:
+              tz = datetime.timezone(datetime.timedelta(hours=8))
+              today = datetime.datetime.now(tz).date()
+              is_weekend = today.weekday() >= 5  # 5=周六, 6=周日
+              if is_weekend or is_holiday(today):
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                      f.write('is_trading_day=false\n')
+                  print('今日为节假日/休市日，跳过分析与推送')
+              else:
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                      f.write('is_trading_day=true\n')
+                  print('今日为交易日，继续执行分析')
           EOF
       
       - name: 创建必要目录
